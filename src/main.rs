@@ -5,6 +5,110 @@ struct Vertex {
     position: [f32; 2],
 }
 
+const VERTEX_SHADER_SRC: &str = r#"
+#version 140
+
+in vec2 position;
+
+void main() {
+    vec2 pos = position;
+    gl_Position = vec4(pos, 0.0, 1.0);
+}
+"#;
+
+const FRAGMENT_SHADER_SRC: &str = r#"
+#version 140
+
+out vec4 color;
+uniform vec4 requested_rgba_color;
+
+void main() {
+    color = requested_rgba_color;
+}
+"#;
+
+// Custom structs required to provide a more friendly
+// abstraction on top of the inner working of OpenGL
+struct Color {
+    r: f32,
+    g: f32,
+    b: f32,
+    a: f32,
+}
+
+impl Color {
+    fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
+        Self { r, g, b, a }
+    }
+
+    fn as_tuple(self) -> (f32, f32, f32, f32) {
+        return (self.r, self.g, self.b, self.a);
+    }
+}
+
+#[non_exhaustive]
+enum ShapePrimitive {
+    Circle,
+    Triangle,
+}
+
+struct SketchDrawCommand<'a> {
+    vertex_buffer: glium::VertexBuffer<Vertex>,
+    indices: glium::index::NoIndices,
+    uniforms:
+        glium::uniforms::UniformsStorage<'a, (f32, f32, f32, f32), glium::uniforms::EmptyUniforms>,
+    draw_parameters: glium::draw_parameters::DrawParameters<'a>,
+}
+
+/// ``color`` will be the fill color of our shape
+/// ``vertices`` should contain the exact number of vertices
+/// that will be composing our shape
+fn generate_draw_command(
+    display: &glium::Display,
+    vertices: Vec<Vertex>,
+    primitive: ShapePrimitive,
+    color: Color,
+    add_fill: bool,
+    stroke_width: Option<f32>,
+) -> SketchDrawCommand {
+    // FIXME: return the commands needed for both the fill and the stroke
+
+    let rgba_color = color.as_tuple();
+
+    // Vertex buffers are the basic ingredients that will be uploaded to the GPU
+    let vertex_buffer = glium::VertexBuffer::new(display, &vertices).unwrap();
+
+    // Tell OpenGL how to link together the vertices that we will pass
+    let primitive_type = match primitive {
+        ShapePrimitive::Circle => glium::index::PrimitiveType::LineLoop,
+        ShapePrimitive::Triangle => glium::index::PrimitiveType::TrianglesList,
+    };
+
+    let indices = glium::index::NoIndices(primitive_type);
+
+    // A uniform that will be passed to our shader
+    let uniforms = glium::uniform! {
+        requested_rgba_color: rgba_color,
+    };
+
+    let draw_parameters = glium::draw_parameters::DrawParameters {
+        multisampling: true,
+        polygon_mode: match add_fill {
+            true => glium::PolygonMode::Fill,
+            false => glium::PolygonMode::Line,
+        },
+        line_width: stroke_width,
+        ..Default::default()
+    };
+
+    SketchDrawCommand {
+        vertex_buffer,
+        indices,
+        uniforms,
+        draw_parameters,
+    }
+}
+
 fn main() {
     let event_loop = glutin::event_loop::EventLoop::new();
     let window_builder = glutin::window::WindowBuilder::new().with_title("glium 101");
@@ -14,27 +118,8 @@ fn main() {
 
     implement_vertex!(Vertex, position);
 
-    // The vertices that will be composing our shape
-    let shape = vec![
-        Vertex {
-            position: [-0.5, -0.5],
-        },
-        Vertex {
-            position: [0.0, 0.5],
-        },
-        Vertex {
-            position: [0.5, -0.25],
-        },
-    ];
-
     // Event Loop for the Window
     event_loop.run(move |event, _, control_flow| {
-        // Vertex buffers are the basic ingredients that will be uploaded to the GPU
-        let vertex_buffer = glium::VertexBuffer::new(&display, &shape).unwrap();
-
-        // Tell OpenGL how to link together the vertices that we will pass
-        let indices = glium::index::NoIndices(glium::index::PrimitiveType::TrianglesList);
-
         /*
         When we defined the Vertex struct in our shape, we created a field named 'position'
         which contains the position of our vertex. But contrary to what I let you think,
@@ -54,64 +139,80 @@ fn main() {
         a later tutorial).
         */
 
-        let vertex_shader_src = r#"
-        #version 140
-
-        in vec2 position;
-
-        void main() {
-            vec2 pos = position;
-            gl_Position = vec4(pos, 0.0, 1.0);
-        }
-        "#;
-
-        let fragment_shader_src = r#"
-        #version 140
-
-        out vec4 color;
-        uniform vec4 triangle_rgba;
-
-        void main() {
-            color = triangle_rgba;
-        }
-        "#;
-
         let geometry_shader = None;
 
         let program = glium::Program::from_source(
             &display,
-            vertex_shader_src,
-            fragment_shader_src,
+            VERTEX_SHADER_SRC,
+            FRAGMENT_SHADER_SRC,
             geometry_shader,
         )
         .unwrap();
-
-        let triangle_rgba = (1.0f32, 1.0f32, 0.0f32, 0.0f32);
-
-        // A uniform that will be passed to our shader
-        let uniforms = glium::uniform! {
-            triangle_rgba: triangle_rgba,
-        };
 
         // Here we do the actual drawing into the frame
         let mut frame = display.draw();
 
         // Clear the background
-        frame.clear_color(0.0, 0.0, 1.0, 1.0);
+        frame.clear_color(1.0, 1.0, 1.0, 1.0);
 
-        let draw_parameters = glium::draw_parameters::DrawParameters {
-            multisampling: true,
-            ..Default::default()
-        };
+        // Here we draw our custom shape by sending the vertices and the shaders
+        // The 'draw command' (which contains all of the instructions for drawing)
+        // is generated programmatically based on the primitive that we need to render
+        let vertices = vec![
+            Vertex {
+                position: [-0.5, -0.5],
+            },
+            Vertex {
+                position: [0.0, 0.5],
+            },
+            Vertex {
+                position: [0.5, -0.25],
+            },
+        ];
 
-        // Draw our custom shape by sending the vertices and the shaders
+        // Fill of the triangle
+        let add_fill = true;
+        let stroke_width = None;
+        let triangle_color = Color::new(1.0, 0.0, 0.0, 0.0);
+        let triangle_draw_command = generate_draw_command(
+            &display,
+            vertices.clone(),
+            ShapePrimitive::Triangle,
+            triangle_color,
+            add_fill,
+            stroke_width,
+        );
+
         frame
             .draw(
-                &vertex_buffer,
-                &indices,
+                &triangle_draw_command.vertex_buffer,
+                &triangle_draw_command.indices,
                 &program,
-                &uniforms,
-                &draw_parameters,
+                &triangle_draw_command.uniforms,
+                &triangle_draw_command.draw_parameters,
+            )
+            .unwrap();
+
+        // Stroke of the triangle
+        let add_fill = false;
+        let stroke_width = Some(4.0 as f32);
+        let triangle_color = Color::new(1.0, 1.0, 0.0, 0.0);
+        let triangle_draw_command = generate_draw_command(
+            &display,
+            vertices.clone(),
+            ShapePrimitive::Triangle,
+            triangle_color,
+            add_fill,
+            stroke_width,
+        );
+
+        frame
+            .draw(
+                &triangle_draw_command.vertex_buffer,
+                &triangle_draw_command.indices,
+                &program,
+                &triangle_draw_command.uniforms,
+                &triangle_draw_command.draw_parameters,
             )
             .unwrap();
 
