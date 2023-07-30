@@ -72,7 +72,6 @@ fn main() {
         uniform vec4 triangle_rgba;
 
         void main() {
-            //color = vec4(1.0, 0.0, 0.0, 1.0);
             color = triangle_rgba;
         }
         "#;
@@ -100,13 +99,12 @@ fn main() {
         // Clear the background
         frame.clear_color(0.0, 0.0, 1.0, 1.0);
 
-        // Draw our custom shape by sending the vertices and the shaders
-        // TODO: DrawParameters
-        // https://docs.rs/glium/latest/glium/draw_parameters/index.html
         let draw_parameters = glium::draw_parameters::DrawParameters {
             multisampling: true,
             ..Default::default()
         };
+
+        // Draw our custom shape by sending the vertices and the shaders
         frame
             .draw(
                 &vertex_buffer,
