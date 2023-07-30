@@ -14,7 +14,6 @@ fn main() {
 
     implement_vertex!(Vertex, position);
 
-    // A uniform that will be passed to our shader
     // The vertices that will be composing our shape
     let shape = vec![
         Vertex {
@@ -90,6 +89,7 @@ fn main() {
 
         let triangle_rgba = (1.0f32, 1.0f32, 0.0f32, 0.0f32);
 
+        // A uniform that will be passed to our shader
         let uniforms = glium::uniform! {
             triangle_rgba: triangle_rgba,
         };
