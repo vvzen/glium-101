@@ -1,0 +1,10 @@
+[package]
+name = "glium-101"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+glium = { version = "0.32.1", features = ["default"] }
+winit = "0.28.6"
